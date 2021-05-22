@@ -21,6 +21,18 @@ pub trait SDF {
     fn difference<A: SDF, B: SDF>(a: A, b: B) -> IntersectionSDF<A, NegationSDF<B>> {
         Self::intersection(a, Self::negate(b))
     }
+
+    fn translate<S: SDF>(sdf: S, translation: Vec3) -> TranslatedSDF<S> {
+        TranslatedSDF { sdf, translation }
+    }
+
+    fn scale<S: SDF>(sdf: S, scale: f64) -> ScaledSDF<S> {
+        ScaledSDF { sdf, scale }
+    }
+
+    fn rotate<S: SDF>(sdf: S, angle: f64, axis: Vec3) -> RotatedSDF<S> {
+        RotatedSDF { sdf, angle, axis }
+    }
 }
 
 
