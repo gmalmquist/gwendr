@@ -1,8 +1,6 @@
 use std::f64;
 use std::fmt;
 use std::ops;
-use wasm_bindgen::__rt::core::fmt::Formatter;
-use wasm_bindgen::__rt::core::ops::{Add, BitXor};
 
 #[derive(Clone)]
 pub struct Vec3 {
@@ -20,6 +18,12 @@ pub struct Basis {
 pub struct Frame {
     pub origin: Vec3,
     pub basis: Basis,
+}
+
+#[derive(Clone)]
+pub struct Ray {
+    pub origin: Vec3,
+    pub direction: Vec3,
 }
 
 impl Vec3 {
@@ -117,6 +121,15 @@ impl Vec3 {
         self.z /= mag;
         self
     }
+
+    pub fn dist2(&self, other: &Vec3) -> f64 {
+        let (x, y, z) = (other.x - self.x, other.y - self.y, other.z - self.z);
+        x * x + y * y + z * z
+    }
+
+    pub fn dist(&self, other: &Vec3) -> f64 {
+        self.dist2(other).sqrt()
+    }
 }
 
 impl Basis {
@@ -124,6 +137,10 @@ impl Basis {
         Self {
             axes: (i, j, k),
         }
+    }
+
+    pub fn identity() -> Self {
+        Self::new(Vec3::right(), Vec3::up(), Vec3::forward())
     }
 
     pub fn into_frame(self, origin: Vec3) -> Frame {
@@ -142,9 +159,9 @@ impl Basis {
 
     pub fn unproject(&self, global: &Vec3) -> Vec3 {
         Vec3::new(
-            global * &self.axes.0,
-            global * &self.axes.1,
-            global * &self.axes.2,
+            global * &self.axes.0 / self.axes.0.norm2(),
+            global * &self.axes.1 / self.axes.1.norm2(),
+            global * &self.axes.2 / self.axes.2.norm2(),
         )
     }
 }
@@ -155,6 +172,14 @@ impl Frame {
             origin,
             basis: Basis::new(i, j, k),
         }
+    }
+
+    pub fn identity() -> Self {
+        Self::new(Vec3::zero(), Vec3::right(), Vec3::up(), Vec3::forward())
+    }
+
+    pub fn translate(mut self, by: &Vec3) {
+        self.origin = self.origin.add(1.0, by);
     }
 
     pub fn project_vec(&self, local: &Vec3) -> Vec3 {
@@ -171,6 +196,12 @@ impl Frame {
 
     pub fn unproject_point(&self, global: &Vec3) -> Vec3 {
         self.basis.unproject(&(global - &self.origin))
+    }
+}
+
+impl Ray {
+    pub fn new(origin: Vec3, direction: Vec3) -> Self {
+        Self { origin, direction }
     }
 }
 
@@ -215,7 +246,7 @@ impl ops::BitXor<&Vec3> for &Vec3 {
 }
 
 impl fmt::Display for Vec3 {
-    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), fmt::Error> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> Result<(), fmt::Error> {
         write!(f, "<{:.2}, {:.2}, {:.2}>", self.x, self.y, self.z)
     }
 }
@@ -226,9 +257,21 @@ impl From<(f64, f64, f64)> for Vec3 {
     }
 }
 
+impl From<(usize, usize, usize)> for Vec3 {
+    fn from(tup: (usize, usize, usize)) -> Self {
+        Self::new(tup.0 as f64, tup.1 as f64, tup.2 as f64)
+    }
+}
+
 impl From<Vec3> for (f64, f64, f64) {
     fn from(v: Vec3) -> Self {
         (v.x, v.y, v.z)
+    }
+}
+
+impl From<Vec3> for (usize, usize, usize) {
+    fn from(v: Vec3) -> Self {
+        (v.x as usize, v.y as usize, v.z as usize)
     }
 }
 
@@ -239,13 +282,13 @@ impl From<Frame> for Basis {
 }
 
 impl fmt::Display for Basis {
-    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), fmt::Error> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> Result<(), fmt::Error> {
         write!(f, "Basis(I={}, J={}, K={})", self.axes.0, self.axes.1, self.axes.2)
     }
 }
 
 impl fmt::Display for Frame {
-    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), fmt::Error> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> Result<(), fmt::Error> {
         write!(
             f,
             "Frame(O={}, I={}, J={}, K={})",
@@ -253,6 +296,17 @@ impl fmt::Display for Frame {
             self.basis.axes.0,
             self.basis.axes.1,
             self.basis.axes.2
+        )
+    }
+}
+
+impl fmt::Display for Ray {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> Result<(), fmt::Error> {
+        write!(
+            f,
+            "Ray(origin={}, direction={})",
+            self.origin,
+            self.direction,
         )
     }
 }
@@ -269,4 +323,7 @@ mod tests {
             (&Vec3::right() ^ &Vec3::up()).to_string(),
         )
     }
+
+    #[test]
+    fn basis() {}
 }
