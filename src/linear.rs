@@ -11,6 +11,17 @@ pub struct Vec3 {
     pub z: f64,
 }
 
+#[derive(Clone)]
+pub struct Basis {
+    pub axes: (Vec3, Vec3, Vec3),
+}
+
+#[derive(Clone)]
+pub struct Frame {
+    pub origin: Vec3,
+    pub basis: Basis,
+}
+
 impl Vec3 {
     pub fn new(x: f64, y: f64, z: f64) -> Self {
         Self { x, y, z }
@@ -108,6 +119,61 @@ impl Vec3 {
     }
 }
 
+impl Basis {
+    pub fn new(i: Vec3, j: Vec3, k: Vec3) -> Self {
+        Self {
+            axes: (i, j, k),
+        }
+    }
+
+    pub fn into_frame(self, origin: Vec3) -> Frame {
+        Frame {
+            origin,
+            basis: self,
+        }
+    }
+
+    pub fn project(&self, local: &Vec3) -> Vec3 {
+        Vec3::zero()
+            .add(local.x, &self.axes.0)
+            .add(local.y, &self.axes.1)
+            .add(local.z, &self.axes.2)
+    }
+
+    pub fn unproject(&self, global: &Vec3) -> Vec3 {
+        Vec3::new(
+            global * &self.axes.0,
+            global * &self.axes.1,
+            global * &self.axes.2,
+        )
+    }
+}
+
+impl Frame {
+    pub fn new(origin: Vec3, i: Vec3, j: Vec3, k: Vec3) -> Self {
+        Self {
+            origin,
+            basis: Basis::new(i, j, k),
+        }
+    }
+
+    pub fn project_vec(&self, local: &Vec3) -> Vec3 {
+        self.basis.project(local)
+    }
+
+    pub fn unproject_vec(&self, global: &Vec3) -> Vec3 {
+        self.basis.unproject(global)
+    }
+
+    pub fn project_point(&self, local: &Vec3) -> Vec3 {
+        self.basis.project(local).add(1.0, &self.origin)
+    }
+
+    pub fn unproject_point(&self, global: &Vec3) -> Vec3 {
+        self.basis.unproject(&(global - &self.origin))
+    }
+}
+
 impl ops::Add<&Vec3> for &Vec3 {
     type Output = Vec3;
 
@@ -163,6 +229,31 @@ impl From<(f64, f64, f64)> for Vec3 {
 impl From<Vec3> for (f64, f64, f64) {
     fn from(v: Vec3) -> Self {
         (v.x, v.y, v.z)
+    }
+}
+
+impl From<Frame> for Basis {
+    fn from(frame: Frame) -> Self {
+        frame.basis
+    }
+}
+
+impl fmt::Display for Basis {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), fmt::Error> {
+        write!(f, "Basis(I={}, J={}, K={})", self.axes.0, self.axes.1, self.axes.2)
+    }
+}
+
+impl fmt::Display for Frame {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), fmt::Error> {
+        write!(
+            f,
+            "Frame(O={}, I={}, J={}, K={})",
+            self.origin,
+            self.basis.axes.0,
+            self.basis.axes.1,
+            self.basis.axes.2
+        )
     }
 }
 
