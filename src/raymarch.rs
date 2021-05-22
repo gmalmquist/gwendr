@@ -1,11 +1,66 @@
 use crate::linear::*;
 
+use std::ops;
+use wasm_bindgen::__rt::core::ops::Neg;
+
 pub trait SDF {
     fn distance(&self, point: &Vec3) -> f64;
+
+    fn negate<T: SDF>(sdf: T) -> NegationSDF<T> {
+        NegationSDF { sdf }
+    }
+
+    fn union<A: SDF, B: SDF>(a: A, b: B) -> UnionSDF<A, B> {
+        UnionSDF { a, b }
+    }
+
+    fn intersection<A: SDF, B: SDF>(a: A, b: B) -> IntersectionSDF<A, B> {
+        IntersectionSDF { a, b }
+    }
+
+    fn difference<A: SDF, B: SDF>(a: A, b: B) -> IntersectionSDF<A, NegationSDF<B>> {
+        Self::intersection(a, Self::negate(b))
+    }
 }
+
 
 pub struct FuncSdf<F> {
     func: F,
+}
+
+pub struct UnionSDF<A, B> {
+    a: A,
+    b: B,
+}
+
+pub struct IntersectionSDF<A, B> {
+    a: A,
+    b: B,
+}
+
+pub struct DifferenceSDF<A, B> {
+    a: A,
+    b: B,
+}
+
+pub struct NegationSDF<S> {
+    sdf: S,
+}
+
+pub struct TranslatedSDF<S> {
+    sdf: S,
+    translation: Vec3,
+}
+
+pub struct ScaledSDF<S> {
+    sdf: S,
+    scale: f64,
+}
+
+pub struct RotatedSDF<S> {
+    sdf: S,
+    angle: f64,
+    axis: Vec3,
 }
 
 impl<F> FuncSdf<F> {
@@ -14,6 +69,42 @@ impl<F> FuncSdf<F> {
         FuncSdf {
             func: f
         }
+    }
+}
+
+impl<A, B> SDF for UnionSDF<A, B> where A: SDF, B: SDF {
+    fn distance(&self, point: &Vec3) -> f64 {
+        self.a.distance(point).min(self.b.distance(point))
+    }
+}
+
+impl<A, B> SDF for IntersectionSDF<A, B> where A: SDF, B: SDF {
+    fn distance(&self, point: &Vec3) -> f64 {
+        self.a.distance(point).max(self.b.distance(point))
+    }
+}
+
+impl<A> SDF for NegationSDF<A> where A: SDF {
+    fn distance(&self, point: &Vec3) -> f64 {
+        -self.sdf.distance(point)
+    }
+}
+
+impl<S> SDF for TranslatedSDF<S> where S: SDF {
+    fn distance(&self, point: &Vec3) -> f64 {
+        self.sdf.distance(&(point - &self.translation))
+    }
+}
+
+impl<S> SDF for ScaledSDF<S> where S: SDF {
+    fn distance(&self, point: &Vec3) -> f64 {
+        self.sdf.distance(&point.clone().scale(1.0 / self.scale)) * self.scale
+    }
+}
+
+impl<S> SDF for RotatedSDF<S> where S: SDF {
+    fn distance(&self, point: &Vec3) -> f64 {
+        self.sdf.distance(&point.clone().rotate(-self.angle, &self.axis))
     }
 }
 

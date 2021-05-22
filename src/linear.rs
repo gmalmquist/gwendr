@@ -130,6 +130,16 @@ impl Vec3 {
     pub fn dist(&self, other: &Vec3) -> f64 {
         self.dist2(other).sqrt()
     }
+
+    pub fn rotate(mut self, angle: f64, axis: &Vec3) -> Self {
+        // https://en.wikipedia.org/wiki/Rodrigues%27_rotation_formula
+        let axis = if axis.norm2() == 1.0 { axis } else { &axis.clone().normalize() };
+        let result = Vec3::zero()
+            .add(angle.cos(), &self)
+            .add(angle.sin(), &(axis ^ &self))
+            .add((1. - angle.cos()) * (axis * &self), axis);
+        self.set(result.x, result.y, result.z)
+    }
 }
 
 impl Basis {
