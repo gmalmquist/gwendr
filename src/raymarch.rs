@@ -8,22 +8,24 @@ pub struct RayHit {
     normal: Vec3,
 }
 
-pub fn raymarch<S: SDF>(ray: Ray, sdf: S) -> RayHit {
+pub fn raymarch<S: SDF>(ray: Ray, sdf: &S) -> Option<RayHit> {
     let mut point = ray.origin.clone();
     let direction = ray.direction.clone().normalize();
     let mut distance = sdf.distance(&point);
-    let mut last_distance = -1.;
     let epsilon = sdf.epsilon();
-    while distance > epsilon && (last_distance < 0. || distance < last_distance) {
+    while distance > epsilon {
         point = point.add(distance, &direction);
-        last_distance = distance;
+        let last_distance = distance;
         distance = sdf.distance(&point);
+        if distance > last_distance {
+            return None
+        }
     }
     let normal = sdf.normal(&point, epsilon);
-    RayHit {
+    Some(RayHit {
         ray,
         point,
         distance,
         normal,
-    }
+    })
 }

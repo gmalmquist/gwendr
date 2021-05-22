@@ -15,7 +15,7 @@ static ALLOC: wee_alloc::WeeAlloc = wee_alloc::WeeAlloc::INIT;
 
 #[wasm_bindgen]
 extern "C" {
-    fn alert(s: &str);
+    fn log(s: &str);
 }
 
 #[wasm_bindgen]
@@ -28,6 +28,9 @@ pub fn setup() -> viewport::Viewport {
         .dyn_into::<web_sys::HtmlCanvasElement>()
         .map_err(|_| ())
         .unwrap();
+
+    log("Starting up");
+
 
     let viewport = viewport::Viewport::new(canvas);
     viewport

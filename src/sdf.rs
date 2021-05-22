@@ -19,6 +19,11 @@ pub trait SDF {
 
     fn epsilon(&self) -> f64;
 
+    fn from<F>(func: F, epsilon: f64) -> FuncSdf<F>
+        where F: Fn(&Vec3) -> f64 {
+        FuncSdf::new(func, epsilon)
+    }
+
     fn negate<T: SDF>(sdf: T) -> NegationSDF<T> {
         NegationSDF { sdf }
     }
@@ -45,6 +50,27 @@ pub trait SDF {
 
     fn rotate<S: SDF>(sdf: S, angle: f64, axis: Vec3) -> RotatedSDF<S> {
         RotatedSDF { sdf, angle, axis }
+    }
+}
+
+pub struct Sphere {
+    center: Vec3,
+    radius: f64,
+}
+
+impl Sphere {
+    pub fn new(center: Vec3, radius: f64) -> Self {
+        Self { center, radius }
+    }
+}
+
+impl SDF for Sphere {
+    fn distance(&self, point: &Vec3) -> f64 {
+        self.center.dist(point) - self.radius
+    }
+
+    fn epsilon(&self) -> f64 {
+        self.radius / 10_000.0
     }
 }
 
