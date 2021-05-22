@@ -1,8 +1,8 @@
 mod linear;
-mod twod;
+mod raymarch;
+mod sdf;
 mod utils;
 mod viewport;
-mod raymarch;
 
 use wasm_bindgen::prelude::*;
 use wasm_bindgen::JsCast;
