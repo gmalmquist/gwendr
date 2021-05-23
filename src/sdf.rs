@@ -261,14 +261,15 @@ impl SDF for PolyFace {
             return MAX_FLOAT;
         }
 
+        let thickness = 0.1;
+
         let mut sd = self.normal.dot(&(point - &self.centroid));
-        // sd = sd.max(-self.normal.dot(&point.clone()
-        //     .add(1., &self.normal)));
+        sd = sd.max(-self.normal.dot(&(point - &self.centroid)) - thickness);
         for i in 0..self.vertices.len() {
             let a = &self.vertices[i];
             let b = &self.vertices[(i + 1) % self.vertices.len()];
             let edge_normal = (b - a).rotate(PI / 2.0, &self.normal).normalize();
-            sd = sd.max(&(point - a) * &edge_normal)
+            sd = sd.max(&(point - a) * &edge_normal - self.epsilon)
         }
         sd
     }

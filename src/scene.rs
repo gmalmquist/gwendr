@@ -88,7 +88,7 @@ impl ViewTransform {
                 let point_on_near_plane = near_plane.project_point(local);
 
                 Ray::new(
-                    point_on_near_plane.clone(),
+                    persp.eye_frame.origin.clone(),
                     (&point_on_near_plane - &persp.eye_frame.origin).normalize(),
                 )
             }
@@ -196,7 +196,7 @@ impl Scene {
         let mut view: ViewTransform = ViewTransform::Ortho(OrthoView { frame: Frame::identity() });
         let mut far_plane = 1_000.;
 
-        let default_attenuation = far_plane;
+        let default_attenuation = 50.;
 
         let space = Regex::new(r"\s+").unwrap();
 
@@ -258,7 +258,7 @@ impl Scene {
                 }
                 ("background", [r, g, b]) => {
                     objects.push(Box::new(
-                        Sphere::new(900.)
+                        Sphere::new(100.)
                             .negate()
                             .shaded({
                                 let mut m = Material::new();
@@ -279,7 +279,6 @@ impl Scene {
                 ("end", []) => {
                     objects.push(Box::new(
                         PolyFace::new(poly_vertices.clone())
-                            // .rotate(PI / 4., Vec3::up())
                             .shaded(material.clone())
                     ));
                 }

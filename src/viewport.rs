@@ -7,6 +7,7 @@ use crate::mat::{Color, Material};
 use crate::scene::{Light, OrthoView, PerspView, Scene, ViewTransform};
 use crate::sdf;
 use crate::sdf::SDF;
+use crate::utils::current_time_millis;
 
 #[wasm_bindgen]
 extern "C" {
@@ -51,6 +52,10 @@ impl Viewport {
     }
 
     pub fn update(&mut self) {
+        if self.frame > 0 {
+            return;
+        }
+
         //self.context.clear_rect(0., 0., self.canvas.width().into(), self.canvas.height().into());
         let width = self.canvas.width() as usize;
         let height = self.canvas.height() as usize;
@@ -65,9 +70,13 @@ impl Viewport {
             scene.debugging = false;
         }
 
-        for _ in 0..(width * height / 64) {
+        let time_budget_millis = 100.;
+        let start_time_millis = current_time_millis();
+
+        while current_time_millis() - start_time_millis < time_budget_millis {
             self.render_next_point(&scene);
         }
+
         self.seed += 29;
     }
 
@@ -104,22 +113,44 @@ impl Viewport {
     fn get_scene(&self) -> Scene {
         if true {
             let scene = "
-# one white triangle
+# four reflective spheres
 
 fov 60
-light 0 0 0 1 1 1
-background 0.3 0.3 0.7
 
-surface   0.8 0.8 0.8   0 0 0   0 0 0   1  0
+# blue background
 
-begin
-vertex  0 -1 -2
-vertex  -1 1 -2
-vertex   1 1 -2
-end
+background 0.2 0.2 1
 
-write c0.png
+# one light source
+
+light 0.4 0 0  .5 .5 .5
+
+# four reflective spheres
+
+surface  .7 .7 .7  0 0 0  0 0 0  20 0.7
+
+sphere 1.41421356   1  1 -1
+sphere 1.41421356  -1 -1 -1
+sphere 1.41421356   1 -1  1
+sphere 1.41421356  -1  1  1
+
+write c5.png
             ";
+//             let scene = "
+// # two spheres, one shiny
+//
+// fov 60
+// light -5 2 5 1 1 1
+//
+// surface   0.5 0 0   0.2 0 0   0.7 0.7 0.7  20  0.7
+// sphere 1  0 0 -4
+//
+// surface   0 0.5 0   0 0.2 0   0 0 0   1 0
+// sphere .3  1 0.6 -3
+//
+// write t3.png
+//
+// ";
             return Scene::parse(scene.split("\n"));
         }
 
