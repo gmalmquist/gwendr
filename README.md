@@ -1,3 +1,24 @@
+# gwendr
+gwen is playing around with rendering things with rust/wasm
+
+currently this contains a basic ray marching implementation
+to render signed distance fields.
+
+![ray marching screenshot](https://github.com/gmalmquist/gwendr/blob/main/img/raymarching.png?raw=true)
+
+## Running locally
+```
+wasm-pack build --release
+cd www
+npm start
+# open localhost:8080 in a browser
+```
+
+you can keep running `wasm-pack build --release` and the
+browser will refresh automatically.
+
+## Generated readme below
+
 <div align="center">
 
   <h1><code>wasm-pack-template</code></h1>
