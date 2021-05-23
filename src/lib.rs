@@ -1,5 +1,7 @@
 mod linear;
+mod mat;
 mod raymarch;
+mod scene;
 mod sdf;
 mod utils;
 mod viewport;

@@ -2,11 +2,13 @@ use crate::linear::*;
 
 use std::ops;
 use wasm_bindgen::__rt::core::ops::Neg;
+use crate::mat::Material;
 
 pub trait SDF {
     fn distance(&self, point: &Vec3) -> f64;
 
-    fn normal(&self, point: &Vec3, epsilon: f64) -> Vec3 {
+    fn normal(&self, point: &Vec3) -> Vec3 {
+        let epsilon = self.epsilon();
         Vec3::new(
             self.distance(&Vec3::right().scale(epsilon).add(1.0, point))
                 - self.distance(&Vec3::left().scale(epsilon).add(1.0, point)),
@@ -19,9 +21,17 @@ pub trait SDF {
 
     fn epsilon(&self) -> f64;
 
+    fn material(&self, point: &Vec3) -> Option<Material> {
+        None
+    }
+
     fn from<F>(func: F, epsilon: f64) -> FuncSdf<F>
         where F: Fn(&Vec3) -> f64 {
         FuncSdf::new(func, epsilon)
+    }
+
+    fn boxed_from(func: Box<dyn Fn(&Vec3) -> f64>, epsilon: f64) -> DynFuncSdf {
+        DynFuncSdf { func, epsilon }
     }
 
     fn negate<T: SDF>(sdf: T) -> NegationSDF<T> {
@@ -74,6 +84,11 @@ impl SDF for Sphere {
     }
 }
 
+pub struct MatSDF<S> {
+    sdf: S,
+    mat: Material,
+}
+
 pub struct DynFuncSdf {
     func: Box<dyn Fn(&Vec3) -> f64>,
     epsilon: f64,
@@ -117,6 +132,20 @@ pub struct RotatedSDF<S> {
     sdf: S,
     angle: f64,
     axis: Vec3,
+}
+
+impl<S> SDF for MatSDF<S> where S: SDF {
+    fn distance(&self, point: &Vec3) -> f64 {
+        self.sdf.distance(point)
+    }
+
+    fn epsilon(&self) -> f64 {
+        self.sdf.epsilon()
+    }
+
+    fn material(&self, _: &Vec3) -> Option<Material> {
+        Some(self.mat.clone())
+    }
 }
 
 impl<F> FuncSdf<F> {

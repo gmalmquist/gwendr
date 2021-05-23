@@ -1,11 +1,13 @@
 use crate::sdf::SDF;
 use crate::linear::*;
+use crate::mat::Material;
 
 pub struct RayHit {
-    ray: Ray,
-    point: Vec3,
-    distance: f64,
-    normal: Vec3,
+    pub ray: Ray,
+    pub point: Vec3,
+    pub distance: f64,
+    pub normal: Vec3,
+    pub material: Material,
 }
 
 pub fn raymarch<S: SDF>(ray: Ray, sdf: &S) -> Option<RayHit> {
@@ -21,11 +23,14 @@ pub fn raymarch<S: SDF>(ray: Ray, sdf: &S) -> Option<RayHit> {
             return None
         }
     }
-    let normal = sdf.normal(&point, epsilon);
+    let normal = sdf.normal(&point);
+    let material = sdf.material(&point);
+    let material = material.unwrap_or_else(|| Material::new());
     Some(RayHit {
         ray,
         point,
         distance,
         normal,
+        material,
     })
 }
