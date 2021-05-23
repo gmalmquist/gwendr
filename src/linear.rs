@@ -2,25 +2,25 @@ use std::f64;
 use std::fmt;
 use std::ops;
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct Vec3 {
     pub x: f64,
     pub y: f64,
     pub z: f64,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct Basis {
     pub axes: (Vec3, Vec3, Vec3),
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct Frame {
     pub origin: Vec3,
     pub basis: Basis,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct Ray {
     pub origin: Vec3,
     pub direction: Vec3,

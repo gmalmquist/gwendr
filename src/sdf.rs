@@ -1,6 +1,7 @@
 use crate::linear::*;
 use crate::mat::Material;
 use wasm_bindgen::__rt::core::f64::consts::PI;
+use crate::log;
 
 const MAX_FLOAT: f64 = (1u64 << 53u64) as f64;
 
@@ -68,8 +69,8 @@ pub trait SDF {
         while distance > epsilon {
             point = point.add(distance, &direction);
             distance = self.distance(&point);
-            if point.dist2(&ray.origin) >= far_plane*far_plane {
-                return None
+            if point.dist2(&ray.origin) >= far_plane * far_plane {
+                return None;
             }
         }
         let normal = self.normal(&point);
@@ -85,6 +86,7 @@ pub trait SDF {
     }
 }
 
+#[derive(Debug)]
 pub struct RayHit {
     pub ray: Ray,
     pub point: Vec3,
@@ -137,6 +139,33 @@ pub struct PolyFace {
     epsilon: f64,
 }
 
+#[derive(Clone)]
+pub struct EmptySDF {}
+
+impl UnionSDF {
+    pub fn new(a: Box<dyn SDF>, b: Box<dyn SDF>) -> Self {
+        Self { a, b }
+    }
+}
+
+impl IntersectionSDF {
+    pub fn new(a: Box<dyn SDF>, b: Box<dyn SDF>) -> Self {
+        Self { a, b }
+    }
+}
+
+impl DifferenceSDF {
+    pub fn new(a: Box<dyn SDF>, b: Box<dyn SDF>) -> Self {
+        Self { a, b }
+    }
+}
+
+impl NegationSDF {
+    pub fn new(sdf: Box<dyn SDF>) -> Self {
+        Self { sdf }
+    }
+}
+
 impl Sphere {
     pub fn new(radius: f64) -> Self {
         Self { radius }
@@ -160,10 +189,11 @@ impl PolyFace {
     pub fn new(vertices: Vec<Vec3>) -> Self {
         let (centroid, normal) = if vertices.len() >= 3 {
             let centroid = vertices.iter()
-                .fold(Vec3::zero(), |a, b| &a + b);
+                .fold(Vec3::zero(), |a, b| &a + b)
+                .scale(1. / (vertices.len() as f64));
             let a = &vertices[0] - &centroid;
             let b = &vertices[1] - &centroid;
-            (centroid, &a ^ &b)
+            (centroid, (&b ^ &a).normalize())
         } else {
             (Vec3::zero(), Vec3::zero())
         };
@@ -215,32 +245,38 @@ impl SDF for Disk {
     }
 }
 
+impl SDF for EmptySDF {
+    fn distance(&self, _: &Vec3) -> f64 {
+        MAX_FLOAT
+    }
+
+    fn epsilon(&self) -> f64 {
+        1.
+    }
+}
+
 impl SDF for PolyFace {
     fn distance(&self, point: &Vec3) -> f64 {
         if self.vertices.len() < 3 {
             return MAX_FLOAT;
         }
-        let mut sd = self.normal.dot(point);
+
+        let mut sd = self.normal.dot(&(point - &self.centroid));
+        // sd = sd.max(-self.normal.dot(&point.clone()
+        //     .add(1., &self.normal)));
         for i in 0..self.vertices.len() {
             let a = &self.vertices[i];
             let b = &self.vertices[(i + 1) % self.vertices.len()];
-            let to_centroid = a.clone().lerp(0.5, b)
-                .add(-1., &self.centroid)
-                .scale(-1.);
-
-            // edge normal is orthogonal to both the edge and the face normal, and points away
-            // from the interior of the polygon.
             let edge_normal = (b - a).rotate(PI / 2.0, &self.normal).normalize();
-            let edge_normal = if &edge_normal * &to_centroid <= 0. {
-                edge_normal
-            } else {
-                edge_normal.scale(-1.)
-            };
-
             sd = sd.max(&(point - a) * &edge_normal)
         }
         sd
     }
+
+    fn normal(&self, _: &Vec3) -> Vec3 {
+        self.normal.clone()
+    }
+
 
     fn epsilon(&self) -> f64 {
         self.epsilon
@@ -347,6 +383,14 @@ impl SDF for UnionSDF {
             self.b.material(p)
         }
     }
+
+    fn normal(&self, p: &Vec3) -> Vec3 {
+        if self.a.distance(p) < self.b.distance(p) {
+            self.a.normal(p)
+        } else {
+            self.b.normal(p)
+        }
+    }
 }
 
 impl SDF for IntersectionSDF {
@@ -365,6 +409,14 @@ impl SDF for IntersectionSDF {
             self.b.material(p)
         }
     }
+
+    fn normal(&self, p: &Vec3) -> Vec3 {
+        if self.a.distance(p) < self.b.distance(p) {
+            self.a.normal(p)
+        } else {
+            self.b.normal(p)
+        }
+    }
 }
 
 impl SDF for DifferenceSDF {
@@ -379,6 +431,14 @@ impl SDF for DifferenceSDF {
     fn material(&self, p: &Vec3) -> Option<Material> {
         self.a.material(p)
     }
+
+    fn normal(&self, p: &Vec3) -> Vec3 {
+        if self.a.distance(p) < self.b.distance(p) {
+            self.a.normal(p)
+        } else {
+            self.b.normal(p)
+        }
+    }
 }
 
 impl SDF for NegationSDF {
@@ -388,6 +448,10 @@ impl SDF for NegationSDF {
 
     fn epsilon(&self) -> f64 {
         self.sdf.epsilon()
+    }
+
+    fn normal(&self, p: &Vec3) -> Vec3 {
+        self.sdf.normal(p).scale(-1.)
     }
 }
 

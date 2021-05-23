@@ -55,7 +55,15 @@ impl Viewport {
         let width = self.canvas.width() as usize;
         let height = self.canvas.height() as usize;
 
-        let scene = self.get_scene();
+        let mut scene = self.get_scene();
+
+        if self.frame == 0 && self.index == 0 {
+            scene.debugging = true;
+            if let Some(c) = scene.raycast_pixel((width / 2, height / 2), width, height) {
+                log(&format!("debugged pixel color: {}", c));
+            }
+            scene.debugging = false;
+        }
 
         for _ in 0..(width * height / 64) {
             self.render_next_point(&scene);
@@ -94,6 +102,27 @@ impl Viewport {
 
 
     fn get_scene(&self) -> Scene {
+        if true {
+            let scene = "
+# one white triangle
+
+fov 60
+light 0 0 0 1 1 1
+background 0.3 0.3 0.7
+
+surface   0.8 0.8 0.8   0 0 0   0 0 0   1  0
+
+begin
+vertex  0 -1 -2
+vertex  -1 1 -2
+vertex   1 1 -2
+end
+
+write c0.png
+            ";
+            return Scene::parse(scene.split("\n"));
+        }
+
         let a = sdf::Sphere::new(1.)
             .translate(Vec3::new(0., 0., 5.))
             .shaded({
@@ -185,6 +214,7 @@ impl Viewport {
             //     )
             // }),
             far_plane: 1_000.,
+            debugging: false,
         }
     }
 }

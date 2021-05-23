@@ -1,7 +1,7 @@
 use std::fmt;
 use std::ops;
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct Material {
     pub ambient: Color,
     pub diffuse: Color,
@@ -22,7 +22,7 @@ impl Material {
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct Color {
     r: f64,
     g: f64,
