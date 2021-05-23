@@ -8,7 +8,8 @@ use crate::linear::{Frame, Vec3, Basis, Ray};
 use crate::sdf::{DynFuncSdf, SDF, Sphere, UnionSDF};
 use crate::raymarch::RayHit;
 use crate::scene::Light;
-use crate::mat::Color;
+use crate::mat::{Color, Material};
+use wasm_bindgen::__rt::core::f64::consts::PI;
 
 #[wasm_bindgen]
 extern "C" {
@@ -16,6 +17,9 @@ extern "C" {
     // `log(..)`
     #[wasm_bindgen(js_namespace = console)]
     fn log(s: &str);
+
+    #[wasm_bindgen(js_namespace = Math)]
+    fn random() -> f64;
 }
 
 #[wasm_bindgen]
@@ -24,6 +28,7 @@ pub struct Viewport {
     context: web_sys::CanvasRenderingContext2d,
     index: usize,
     seed: u64,
+    frame: u64,
 }
 
 pub trait ViewportApi {
@@ -44,6 +49,7 @@ impl Viewport {
             context,
             index: 0,
             seed: 0,
+            frame: 0,
         }
     }
 
@@ -62,7 +68,7 @@ impl Viewport {
         let width = self.canvas.width() as usize;
         let height = self.canvas.height() as usize;
 
-        let near_plane = 1.;
+        let eye_distance = 1.;
 
         let canvas_frame = Frame::new(
             Vec3::new(width as f64 / 2.0, height as f64 / 2.0, 0.),
@@ -74,55 +80,187 @@ impl Viewport {
         let x = (self.index % width) as f64;
         let y = (self.index / width) as f64;
 
-        let world_frame = Frame::identity();
+        let world_frame = Frame::identity();//.scale(6.);
 
         let canvas_point = Vec3::new(x, y, 0.);
         let local_point = canvas_frame.unproject_point(&canvas_point);
         let world_point = world_frame.project_point(&local_point);
 
-        let eye = Vec3::zero().add(near_plane, &Vec3::backward());
-        let ray = Ray::new(eye.clone(), (&world_point - &eye).normalize());
+        let eye = Vec3::zero().add(eye_distance, &Vec3::backward());
+        let eye_dir = (&world_point - &eye).normalize()
+            .rotate(0. * PI / 180., &Vec3::up());
+        let ray = Ray::new(eye, eye_dir);
 
-        let scene = self.get_scene();
-
-        let hit = raymarch::raymarch(ray, &scene);
-
-        if let Some(hit) = hit {
-            let color = &self.get_color(&hit, &scene);
+        if let Some(color) = self.raycast(ray) {
+            let color = &color;
             self.context.set_fill_style(&color.into());
             self.context.fill_rect(x, y, 1., 1.);
+
+            if self.frame == 0 {
+                // log(&format!("eye: {}", &hit.ray));
+                // log(&format!("hit: {:#?}", &hit.distance));
+            }
         } else {
-            let rand = ((self.index as u64 ^ self.seed) as f64);
-            let color = mat::Color::new(rand.sin(), (rand + 23.).sin(), (rand + 7.).cos());
-            self.context.set_fill_style(&JsValue::from_str(&color.to_string()));
-            self.context.fill_rect(x, y, 1., 1.);
+            self.context.fill_rect(x, y, 0., 0.);
         }
 
         self.index = (self.index + 1) % (width * height);
+        if self.index == 0 {
+            self.frame += 1;
+        }
     }
 
-    fn get_color<F>(&self, hit: &RayHit, scene: &F) -> mat::Color where F: sdf::SDF {
-        let light = Light::new(
-            Vec3::new(-10.0, 10.0, -10.0),
-            Color::from_hexstring("#ff88ff"),
-        );
-
-        let lc = light.color(&hit.point);
-        let shadow_ray = light.shadow_ray(&hit.point);
-        let ld = shadow_ray.direction.clone().normalize();
-        // TODO shadow rays.
-
-        hit.material.ambient.clone()
-            .add((&ld * &hit.normal).max(0.), &hit.material.diffuse)
-        // TODO: specular etc
+    fn raycast(&self, ray: Ray) -> Option<mat::Color> {
+        let far_plane = 1_000_000.;
+        let scene = self.get_scene();
+        let ray_count = 1;
+        let mut color = None;
+        for _ in 0..ray_count {
+            let hit = raymarch::raymarch(&perturb(&ray, 0.01), &scene, far_plane);
+            if let Some(col) = hit.map(|hit| self.get_color(&hit, &scene, far_plane)) {
+                color = color.map(|c| &c + &col).or(Some(col))
+            }
+        }
+        color.map(|c| c.scale(1. / (ray_count as f64)))
     }
 
-    fn get_scene(&self) -> UnionSDF<Sphere, Sphere> {
-        let a = sdf::Sphere::new(Vec3::new(0., 0., 5.), 1.);
-        let b = sdf::Sphere::new(Vec3::new(-3., 3., 5.), 1.);
-        let scene = sdf::SDF::union(a, b);
+    fn get_color<F>(&self, hit: &RayHit, scene: &F, far_plane: f64) -> mat::Color where F: sdf::SDF {
+        let lights = vec![
+            Light::new(
+                Vec3::new(-10.0, 10.0, 5.0),
+                Color::from_hexstring("#ffffff"),
+            ),
+            Light::new(
+                Vec3::new(10.0, 0.0, 0.0),
+                Color::from_hexstring("#ff88ff").scale(0.1),
+            ),
+            Light::new(
+                Vec3::new(-10.0, 0.0, 3.),
+                Color::from_hexstring("#ffffff"),
+            ),
+        ];
+
+        let mut color = hit.material.ambient.clone();
+
+        // ray pointing toward eye
+        let v = hit.ray.direction.clone().normalize().scale(-1.);
+
+        // hit point pushed out a little bit to avoid self-collisions
+        let adjusted_hit = hit.point.clone().add(scene.epsilon(), &hit.normal);
+
+        for light in lights {
+            let lc = light.color(&hit.point);
+            let mut shadow_ray = light.shadow_ray(&adjusted_hit);
+            let ld = shadow_ray.direction.clone().normalize();
+
+            let shadow_ray_count = 1;
+            let mut shadow_hit_count = 0;
+            for _ in 0..shadow_ray_count {
+                let hit = raymarch::raymarch(
+                    &perturb(&shadow_ray, 0.),
+                    scene,
+                    shadow_ray.direction.norm()
+                );
+                if hit.is_some() {
+                    shadow_hit_count += 1;
+                }
+            }
+            if shadow_hit_count == shadow_ray_count {
+                continue; // fully in shadow.
+            }
+            let shadow_amount = (shadow_hit_count as f64) / (shadow_ray_count as f64);
+
+            // reflection of direction to light
+            let lr = ld.clone().add(-2., &ld.clone().off_axis(&hit.normal));
+
+            let diffuse_strength = (&ld * &hit.normal).max(0.);
+            let specular_strength = (&lr * &v).max(0.).powf(hit.material.phong);
+            color = color
+                .add(diffuse_strength * (1. - shadow_amount), &(&hit.material.diffuse * &lc))
+                .add(specular_strength * (1. - shadow_amount), &hit.material.specular)
+        }
+
+        if hit.material.reflectivity > 0. {
+            let refl_ray = Ray::new(
+                adjusted_hit,
+                v.clone().add(-2., &v.clone().off_axis(&hit.normal))
+            );
+            if let Some(refl_color) = self.raycast(refl_ray) {
+                color = color.add(hit.material.reflectivity, &refl_color);
+            }
+        }
+
+        color
+    }
+
+    fn get_scene(&self) -> UnionSDF {
+        let a = sdf::Sphere::new(1.)
+            .translate(Vec3::new(0., 0., 5.))
+            .shaded({
+                let mut m = Material::new();
+                m.diffuse = Color::from_hexstring("#ffffff");
+                m.ambient = m.diffuse.clone().scale(0.01);
+                m.specular = Color::from_hexstring("#ffffff");
+                m.phong = 10.;
+                m.reflectivity = 1.0;
+                m
+            });
+        let b = sdf::Sphere::new(1.)
+            .translate(Vec3::new(-3., 3., 7.))
+            .shaded({
+                let mut m = Material::new();
+                m.diffuse = Color::from_hexstring("#ff88ff");
+                m.ambient = m.diffuse.clone().scale(0.01);
+                m.specular = Color::from_hexstring("#ffffff");
+                m.phong = 10.;
+                m.reflectivity = 1.0;
+                m
+            });
+        let c = sdf::Sphere::new(0.5)
+            .translate(Vec3::new(1., -2., 4.))
+            .shaded({
+                let mut m = Material::new();
+                m.diffuse = Color::from_hexstring("#8888ff");
+                m.ambient = m.diffuse.clone().scale(0.01);
+                m.specular = Color::from_hexstring("#ffffff");
+                m.phong = 10.;
+                m
+            });
+        let d = sdf::Sphere::new(0.2)
+            .translate(Vec3::new(-1., 0.6, 4.5))
+            .shaded({
+                let mut m = Material::new();
+                m.diffuse = Color::from_hexstring("#ffffff");
+                m.ambient = m.diffuse.clone().scale(0.01);
+                m.specular = Color::from_hexstring("#ffffff");
+                m.phong = 10.;
+                m
+            });
+        let scene = a.union(Box::new(b))
+            .union(Box::new(c))
+            .union(Box::new(d));
         scene
     }
+}
+
+fn perturb(ray: &Ray, degrees: f64) -> Ray {
+    let random_spread = degrees * PI / 180.0;
+    let mut ray = ray.clone();
+
+    let r = ray.direction.clone().normalize();
+    let axis1 = Vec3::cross(&r, &Vec3::right());
+    let axis1 = if axis1.norm2() == 0. {
+        Vec3::cross(&r, &Vec3::up())
+    } else {
+        axis1
+    };
+    let axis1 = axis1.normalize();
+    let axis2 = Vec3::cross(&axis1, &r).normalize();
+
+    ray.direction = r
+        .rotate((random() * 2. - 1.) * random_spread, &axis1)
+        .rotate((random() * 2. - 1.) * random_spread, &axis2);
+    ray
 }
 
 impl ViewportApi for Viewport {

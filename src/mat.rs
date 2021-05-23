@@ -8,6 +8,7 @@ pub struct Material {
     pub diffuse: Color,
     pub specular: Color,
     pub phong: f64,
+    pub reflectivity: f64,
 }
 
 impl Material {
@@ -16,7 +17,8 @@ impl Material {
             ambient: Color::black(),
             diffuse: Color::white(),
             specular: Color::black(),
-            phong: 1.0,
+            phong: 1.,
+            reflectivity: 0.,
         }
     }
 }
@@ -75,14 +77,14 @@ impl Color {
     pub fn scale(mut self, scale: f64) -> Self {
         self.r *= scale;
         self.g *= scale;
-        self.b * scale;
+        self.b *= scale;
         self
     }
 
     pub fn multiply(mut self, other: &Color) -> Self {
         self.r *= other.r;
         self.g *= other.g;
-        self.b * other.b;
+        self.b *= other.b;
         self
     }
 

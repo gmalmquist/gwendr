@@ -70,6 +70,19 @@ impl Vec3 {
         )
     }
 
+    pub fn on_axis(mut self, axis: &Vec3) -> Self {
+        let s = self.dot(axis) / axis.norm2();
+        self.x = axis.x * s;
+        self.y = axis.y * s;
+        self.z = axis.z * s;
+        self
+    }
+
+    pub fn off_axis(mut self, axis: &Vec3) -> Self {
+        let s = self.dot(axis) / axis.norm2();
+        self.add(-s, axis)
+    }
+
     pub fn set(mut self, x: f64, y: f64, z: f64) -> Self {
         self.x = x;
         self.y = y;
@@ -153,6 +166,13 @@ impl Basis {
         Self::new(Vec3::right(), Vec3::up(), Vec3::forward())
     }
 
+    pub fn scale(mut self, scale: f64) -> Self {
+        self.axes.0 = self.axes.0.scale(scale);
+        self.axes.1 = self.axes.1.scale(scale);
+        self.axes.2 = self.axes.2.scale(scale);
+        self
+    }
+
     pub fn into_frame(self, origin: Vec3) -> Frame {
         Frame {
             origin,
@@ -190,6 +210,11 @@ impl Frame {
 
     pub fn translate(mut self, by: &Vec3) {
         self.origin = self.origin.add(1.0, by);
+    }
+
+    pub fn scale(mut self, scale: f64) -> Self {
+        self.basis = self.basis.scale(scale);
+        self
     }
 
     pub fn project_vec(&self, local: &Vec3) -> Vec3 {
@@ -244,6 +269,14 @@ impl ops::Mul<f64> for &Vec3 {
 
     fn mul(self, rhs: f64) -> Self::Output {
         self.clone().scale(rhs)
+    }
+}
+
+impl ops::Mul<&Vec3> for f64 {
+    type Output = Vec3;
+
+    fn mul(self, rhs: &Vec3) -> Self::Output {
+        rhs.clone().scale(self)
     }
 }
 

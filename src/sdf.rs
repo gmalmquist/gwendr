@@ -22,45 +22,43 @@ pub trait SDF {
 
     fn epsilon(&self) -> f64;
 
-    fn material(&self, point: &Vec3) -> Option<Material> {
+    fn material(&self, _point: &Vec3) -> Option<Material> {
         None
     }
 
-    fn from<F>(func: F, epsilon: f64) -> FuncSdf<F>
-        where F: Fn(&Vec3) -> f64 {
-        FuncSdf::new(func, epsilon)
+    fn negate(self) -> NegationSDF where Self: Sized + 'static {
+        NegationSDF { sdf: Box::new(self) }
     }
 
-    fn boxed_from(func: Box<dyn Fn(&Vec3) -> f64>, epsilon: f64) -> DynFuncSdf {
-        DynFuncSdf { func, epsilon }
+    fn union(self, sdf: Box<dyn SDF>) -> UnionSDF where Self: Sized + 'static {
+        UnionSDF { a: Box::new(self), b: sdf }
     }
 
-    fn negate<T: SDF>(sdf: T) -> NegationSDF<T> {
-        NegationSDF { sdf }
+    fn intersection(self, sdf: Box<dyn SDF>) -> IntersectionSDF where Self: Sized + 'static {
+        IntersectionSDF { a: Box::new(self), b: sdf }
     }
 
-    fn union<A: SDF, B: SDF>(a: A, b: B) -> UnionSDF<A, B> {
-        UnionSDF { a, b }
+    fn difference(self, sdf: Box<dyn SDF>) -> DifferenceSDF where Self: Sized + 'static {
+        DifferenceSDF { a: Box::new(self), b: sdf }
     }
 
-    fn intersection<A: SDF, B: SDF>(a: A, b: B) -> IntersectionSDF<A, B> {
-        IntersectionSDF { a, b }
+    fn translate(self, translation: Vec3) -> TranslatedSDF where Self: Sized + 'static {
+        TranslatedSDF { sdf: Box::new(self), translation }
     }
 
-    fn difference<A: SDF, B: SDF>(a: A, b: B) -> IntersectionSDF<A, NegationSDF<B>> {
-        Self::intersection(a, Self::negate(b))
+    fn scale(self, scale: f64) -> ScaledSDF where Self: Sized + 'static {
+        ScaledSDF { sdf: Box::new(self), scale }
     }
 
-    fn translate<S: SDF>(sdf: S, translation: Vec3) -> TranslatedSDF<S> {
-        TranslatedSDF { sdf, translation }
+    fn rotate(self, angle: f64, axis: Vec3) -> RotatedSDF where Self: Sized + 'static {
+        RotatedSDF { sdf: Box::new(self), angle, axis }
     }
 
-    fn scale<S: SDF>(sdf: S, scale: f64) -> ScaledSDF<S> {
-        ScaledSDF { sdf, scale }
-    }
-
-    fn rotate<S: SDF>(sdf: S, angle: f64, axis: Vec3) -> RotatedSDF<S> {
-        RotatedSDF { sdf, angle, axis }
+    fn shaded(self, mat: Material) -> MatSDF where Self: Sized + 'static {
+        MatSDF {
+            sdf: Box::new(self),
+            mat,
+        }
     }
 }
 
@@ -84,29 +82,29 @@ impl SDF for SdfShape {
     }
 }
 
+#[derive(Clone)]
 pub struct Sphere {
-    center: Vec3,
     radius: f64,
 }
 
 impl Sphere {
-    pub fn new(center: Vec3, radius: f64) -> Self {
-        Self { center, radius }
+    pub fn new(radius: f64) -> Self {
+        Self { radius }
     }
 }
 
 impl SDF for Sphere {
     fn distance(&self, point: &Vec3) -> f64 {
-        self.center.dist(point) - self.radius
+        point.norm() - self.radius
     }
 
     fn epsilon(&self) -> f64 {
-        self.radius / 10_000.0
+        self.radius / 1_000.0
     }
 }
 
-pub struct MatSDF<S> {
-    sdf: S,
+pub struct MatSDF {
+    sdf: Box<dyn SDF>,
     mat: Material,
 }
 
@@ -115,47 +113,48 @@ pub struct DynFuncSdf {
     epsilon: f64,
 }
 
-pub struct FuncSdf<F> {
-    func: F,
+pub struct FuncSdf {
+    func: fn(&Vec3) -> f64,
     epsilon: f64,
 }
 
-pub struct UnionSDF<A, B> {
-    a: A,
-    b: B,
+pub struct UnionSDF {
+    a: Box<dyn SDF>,
+    b: Box<dyn SDF>,
 }
 
-pub struct IntersectionSDF<A, B> {
-    a: A,
-    b: B,
+pub struct IntersectionSDF {
+    a: Box<dyn SDF>,
+    b: Box<dyn SDF>,
 }
 
-pub struct DifferenceSDF<A, B> {
-    a: A,
-    b: B,
+
+pub struct DifferenceSDF {
+    a: Box<dyn SDF>,
+    b: Box<dyn SDF>,
 }
 
-pub struct NegationSDF<S> {
-    sdf: S,
+pub struct NegationSDF {
+    sdf: Box<dyn SDF>,
 }
 
-pub struct TranslatedSDF<S> {
-    sdf: S,
+pub struct TranslatedSDF {
+    sdf: Box<dyn SDF>,
     translation: Vec3,
 }
 
-pub struct ScaledSDF<S> {
-    sdf: S,
+pub struct ScaledSDF {
+    sdf: Box<dyn SDF>,
     scale: f64,
 }
 
-pub struct RotatedSDF<S> {
-    sdf: S,
+pub struct RotatedSDF {
+    sdf: Box<dyn SDF>,
     angle: f64,
     axis: Vec3,
 }
 
-impl<S> SDF for MatSDF<S> where S: SDF {
+impl SDF for MatSDF {
     fn distance(&self, point: &Vec3) -> f64 {
         self.sdf.distance(point)
     }
@@ -169,9 +168,8 @@ impl<S> SDF for MatSDF<S> where S: SDF {
     }
 }
 
-impl<F> FuncSdf<F> {
-    pub fn new(func: F, epsilon: f64) -> Self
-        where F: Fn(&Vec3) -> f64 {
+impl FuncSdf {
+    pub fn new(func: fn(&Vec3) -> f64, epsilon: f64) -> Self {
         FuncSdf {
             func,
             epsilon,
@@ -189,7 +187,7 @@ impl SDF for DynFuncSdf {
     }
 }
 
-impl<A, B> SDF for UnionSDF<A, B> where A: SDF, B: SDF {
+impl SDF for UnionSDF {
     fn distance(&self, point: &Vec3) -> f64 {
         self.a.distance(point).min(self.b.distance(point))
     }
@@ -197,9 +195,17 @@ impl<A, B> SDF for UnionSDF<A, B> where A: SDF, B: SDF {
     fn epsilon(&self) -> f64 {
         self.a.epsilon().min(self.b.epsilon())
     }
+
+    fn material(&self, p: &Vec3) -> Option<Material> {
+        if self.a.distance(p) < self.b.distance(p) {
+            self.a.material(p)
+        } else {
+            self.b.material(p)
+        }
+    }
 }
 
-impl<A, B> SDF for IntersectionSDF<A, B> where A: SDF, B: SDF {
+impl SDF for IntersectionSDF {
     fn distance(&self, point: &Vec3) -> f64 {
         self.a.distance(point).max(self.b.distance(point))
     }
@@ -207,9 +213,31 @@ impl<A, B> SDF for IntersectionSDF<A, B> where A: SDF, B: SDF {
     fn epsilon(&self) -> f64 {
         self.a.epsilon().min(self.b.epsilon())
     }
+
+    fn material(&self, p: &Vec3) -> Option<Material> {
+        if self.a.distance(p) < self.b.distance(p) {
+            self.a.material(p)
+        } else {
+            self.b.material(p)
+        }
+    }
 }
 
-impl<A> SDF for NegationSDF<A> where A: SDF {
+impl SDF for DifferenceSDF {
+    fn distance(&self, point: &Vec3) -> f64 {
+        self.a.distance(point).max(-self.b.distance(point))
+    }
+
+    fn epsilon(&self) -> f64 {
+        self.a.epsilon().min(self.b.epsilon())
+    }
+
+    fn material(&self, p: &Vec3) -> Option<Material> {
+        self.a.material(p)
+    }
+}
+
+impl SDF for NegationSDF {
     fn distance(&self, point: &Vec3) -> f64 {
         -self.sdf.distance(point)
     }
@@ -219,7 +247,7 @@ impl<A> SDF for NegationSDF<A> where A: SDF {
     }
 }
 
-impl<S> SDF for TranslatedSDF<S> where S: SDF {
+impl SDF for TranslatedSDF {
     fn distance(&self, point: &Vec3) -> f64 {
         self.sdf.distance(&(point - &self.translation))
     }
@@ -227,9 +255,13 @@ impl<S> SDF for TranslatedSDF<S> where S: SDF {
     fn epsilon(&self) -> f64 {
         self.sdf.epsilon()
     }
+
+    fn material(&self, p: &Vec3) -> Option<Material> {
+        self.sdf.material(p)
+    }
 }
 
-impl<S> SDF for ScaledSDF<S> where S: SDF {
+impl SDF for ScaledSDF {
     fn distance(&self, point: &Vec3) -> f64 {
         self.sdf.distance(&point.clone().scale(1.0 / self.scale)) * self.scale
     }
@@ -237,9 +269,13 @@ impl<S> SDF for ScaledSDF<S> where S: SDF {
     fn epsilon(&self) -> f64 {
         self.sdf.epsilon()
     }
+
+    fn material(&self, p: &Vec3) -> Option<Material> {
+        self.sdf.material(p)
+    }
 }
 
-impl<S> SDF for RotatedSDF<S> where S: SDF {
+impl SDF for RotatedSDF {
     fn distance(&self, point: &Vec3) -> f64 {
         self.sdf.distance(&point.clone().rotate(-self.angle, &self.axis))
     }
@@ -247,9 +283,13 @@ impl<S> SDF for RotatedSDF<S> where S: SDF {
     fn epsilon(&self) -> f64 {
         self.sdf.epsilon()
     }
+
+    fn material(&self, p: &Vec3) -> Option<Material> {
+        self.sdf.material(p)
+    }
 }
 
-impl<F> SDF for FuncSdf<F> where F: Fn(&Vec3) -> f64 {
+impl SDF for FuncSdf {
     fn distance(&self, point: &Vec3) -> f64 {
         (self.func)(point)
     }
@@ -275,9 +315,9 @@ mod tests {
     use crate::sdf::*;
 
     #[test]
-    fn func_sdf() {
+    fn sphere_sdf() {
         // distance from unit sphere at origin
-        let f = FuncSdf::new(|v| v.norm() - 1.0, 0.001);
+        let f = Sphere::new(1.0);
         assert_eq!(f.distance(&Vec3::right()).to_string(), 0.0.to_string());
         assert_eq!(f.distance(&Vec3::up()).to_string(), 0.0.to_string());
         assert_eq!(f.distance(&Vec3::down()).to_string(), 0.0.to_string());

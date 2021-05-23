@@ -10,16 +10,15 @@ pub struct RayHit {
     pub material: Material,
 }
 
-pub fn raymarch<S: SDF>(ray: Ray, sdf: &S) -> Option<RayHit> {
+pub fn raymarch<S: SDF>(ray: &Ray, sdf: &S, far_plane: f64) -> Option<RayHit> {
     let mut point = ray.origin.clone();
     let direction = ray.direction.clone().normalize();
     let mut distance = sdf.distance(&point);
     let epsilon = sdf.epsilon();
     while distance > epsilon {
         point = point.add(distance, &direction);
-        let last_distance = distance;
         distance = sdf.distance(&point);
-        if distance > last_distance {
+        if point.dist2(&ray.origin) >= far_plane*far_plane {
             return None
         }
     }
@@ -27,7 +26,7 @@ pub fn raymarch<S: SDF>(ray: Ray, sdf: &S) -> Option<RayHit> {
     let material = sdf.material(&point);
     let material = material.unwrap_or_else(|| Material::new());
     Some(RayHit {
-        ray,
+        ray: ray.clone(),
         point,
         distance,
         normal,
