@@ -87,15 +87,60 @@ pub struct Sphere {
     radius: f64,
 }
 
+#[derive(Clone)]
+pub struct Plane {
+    normal: Vec3,
+}
+
+#[derive(Clone)]
+pub struct Disk {
+    normal: Vec3,
+    radius: f64,
+}
+
 impl Sphere {
     pub fn new(radius: f64) -> Self {
         Self { radius }
     }
 }
 
+impl Plane {
+    pub fn new(normal: Vec3) -> Self { Self { normal } }
+}
+
+impl Disk {
+    pub fn new(normal: Vec3, radius: f64) -> Self {
+        Self {
+            normal,
+            radius,
+        }
+    }
+}
+
 impl SDF for Sphere {
     fn distance(&self, point: &Vec3) -> f64 {
         point.norm() - self.radius
+    }
+
+    fn epsilon(&self) -> f64 {
+        self.radius / 1_000.0
+    }
+}
+
+impl SDF for Plane {
+    fn distance(&self, point: &Vec3) -> f64 {
+        self.normal.dot(point)
+    }
+
+    fn epsilon(&self) -> f64 {
+        0.001
+    }
+}
+
+impl SDF for Disk {
+    fn distance(&self, point: &Vec3) -> f64 {
+        // this is really just the intersection of a sphere and an infinite plane
+        self.normal.dot(point).max(point.norm() - self.radius)
     }
 
     fn epsilon(&self) -> f64 {

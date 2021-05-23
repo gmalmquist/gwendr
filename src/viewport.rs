@@ -111,7 +111,7 @@ impl Viewport {
     }
 
     fn raycast(&self, ray: Ray) -> Option<mat::Color> {
-        let far_plane = 1_000_000.;
+        let far_plane = 1_000.;
         let scene = self.get_scene();
         let ray_count = 1;
         let mut color = None;
@@ -129,14 +129,17 @@ impl Viewport {
             Light::new(
                 Vec3::new(-10.0, 10.0, 5.0),
                 Color::from_hexstring("#ffffff"),
+                10.,
             ),
             Light::new(
                 Vec3::new(10.0, 0.0, 0.0),
                 Color::from_hexstring("#ff88ff").scale(0.1),
+                10.,
             ),
             Light::new(
                 Vec3::new(-10.0, 0.0, 3.),
                 Color::from_hexstring("#ffffff"),
+                10.,
             ),
         ];
 
@@ -236,7 +239,17 @@ impl Viewport {
                 m.phong = 10.;
                 m
             });
-        let scene = a.union(Box::new(b))
+        let floor = sdf::Disk::new(Vec3::up(), 30.0)
+            .translate(Vec3::new(0., -10., 0.))
+            .shaded({
+                let mut m = Material::new();
+                m.diffuse = Color::from_hexstring("#ffffff");
+                m.ambient = m.diffuse.clone().scale(0.01);
+                m
+            });
+        let scene = floor
+            .union(Box::new(a))
+            .union(Box::new(b))
             .union(Box::new(c))
             .union(Box::new(d));
         scene
