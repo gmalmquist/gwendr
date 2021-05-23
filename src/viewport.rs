@@ -1,15 +1,12 @@
-use wasm_bindgen::prelude::*;
 use wasm_bindgen::JsCast;
+use wasm_bindgen::prelude::*;
 
+use crate::linear::{Frame, Ray, Vec3};
 use crate::mat;
-use crate::raymarch;
-use crate::sdf;
-use crate::linear::{Frame, Vec3, Basis, Ray};
-use crate::sdf::{DynFuncSdf, SDF, Sphere, UnionSDF};
-use crate::raymarch::RayHit;
-use crate::scene::Light;
 use crate::mat::{Color, Material};
-use wasm_bindgen::__rt::core::f64::consts::PI;
+use crate::scene::{Light, OrthoView, PerspView, Scene, ViewTransform};
+use crate::sdf;
+use crate::sdf::SDF;
 
 #[wasm_bindgen]
 extern "C" {
@@ -58,41 +55,25 @@ impl Viewport {
         let width = self.canvas.width() as usize;
         let height = self.canvas.height() as usize;
 
+        let scene = self.get_scene();
+
         for _ in 0..(width * height / 64) {
-            self.render_next_point();
+            self.render_next_point(&scene);
         }
         self.seed += 29;
     }
 
-    fn render_next_point(&mut self) {
+    fn render_next_point(&mut self, scene: &Scene) {
         let width = self.canvas.width() as usize;
         let height = self.canvas.height() as usize;
 
-        let eye_distance = 1.;
+        let x = self.index % width;
+        let y = self.index / width;
+        let pixel = (x, y);
+        let x = x as f64;
+        let y = y as f64;
 
-        let canvas_frame = Frame::new(
-            Vec3::new(width as f64 / 2.0, height as f64 / 2.0, 0.),
-            Vec3::right().scale(width as f64 / 2.0),
-            Vec3::up().scale(-(height as f64 / 2.0)),
-            Vec3::forward(),
-        );
-
-        let x = (self.index % width) as f64;
-        let y = (self.index / width) as f64;
-
-        let world_frame = Frame::identity();//.scale(6.);
-
-        let canvas_point = Vec3::new(x, y, 0.);
-        let local_point = canvas_frame.unproject_point(&canvas_point);
-        let world_point = world_frame.project_point(&local_point);
-
-        // TODO: pretty sure this perspective math is slightly wrong
-        let eye = Vec3::zero().add(eye_distance, &Vec3::backward());
-        let eye_dir = (&world_point - &eye).normalize()
-            .rotate(0. * PI / 180., &Vec3::up());
-        let ray = Ray::new(eye, eye_dir);
-
-        if let Some(color) = self.raycast(ray) {
+        if let Some(color) = scene.raycast_pixel(pixel, width, height) {
             let color = &color;
             self.context.set_fill_style(&color.into());
             self.context.fill_rect(x, y, 1., 1.);
@@ -111,93 +92,8 @@ impl Viewport {
         }
     }
 
-    fn raycast(&self, ray: Ray) -> Option<mat::Color> {
-        let far_plane = 1_000.;
-        let scene = self.get_scene();
-        let ray_count = 1;
-        let mut color = None;
-        for _ in 0..ray_count {
-            let hit = raymarch::raymarch(&perturb(&ray, 0.01), &scene, far_plane);
-            if let Some(col) = hit.map(|hit| self.get_color(&hit, &scene, far_plane)) {
-                color = color.map(|c| &c + &col).or(Some(col))
-            }
-        }
-        color.map(|c| c.scale(1. / (ray_count as f64)))
-    }
 
-    fn get_color<F>(&self, hit: &RayHit, scene: &F, far_plane: f64) -> mat::Color where F: sdf::SDF {
-        let lights = vec![
-            Light::new(
-                Vec3::new(-10.0, 10.0, 5.0),
-                Color::from_hexstring("#ffffff"),
-                10.,
-            ),
-            Light::new(
-                Vec3::new(10.0, 0.0, 0.0),
-                Color::from_hexstring("#ff88ff").scale(0.1),
-                10.,
-            ),
-            Light::new(
-                Vec3::new(-10.0, 0.0, 3.),
-                Color::from_hexstring("#ffffff"),
-                10.,
-            ),
-        ];
-
-        let mut color = hit.material.ambient.clone();
-
-        // ray pointing toward eye
-        let v = hit.ray.direction.clone().normalize().scale(-1.);
-
-        // hit point pushed out a little bit to avoid self-collisions
-        let adjusted_hit = hit.point.clone().add(scene.epsilon(), &hit.normal);
-
-        for light in lights {
-            let lc = light.color(&hit.point);
-            let mut shadow_ray = light.shadow_ray(&adjusted_hit);
-            let ld = shadow_ray.direction.clone().normalize();
-
-            let shadow_ray_count = 1;
-            let mut shadow_hit_count = 0;
-            for _ in 0..shadow_ray_count {
-                let hit = raymarch::raymarch(
-                    &perturb(&shadow_ray, 0.),
-                    scene,
-                    shadow_ray.direction.norm()
-                );
-                if hit.is_some() {
-                    shadow_hit_count += 1;
-                }
-            }
-            if shadow_hit_count == shadow_ray_count {
-                continue; // fully in shadow.
-            }
-            let shadow_amount = (shadow_hit_count as f64) / (shadow_ray_count as f64);
-
-            // reflection of direction to light
-            let lr = ld.clone().add(-2., &ld.clone().off_axis(&hit.normal));
-
-            let diffuse_strength = (&ld * &hit.normal).max(0.);
-            let specular_strength = (&lr * &v).max(0.).powf(hit.material.phong);
-            color = color
-                .add(diffuse_strength * (1. - shadow_amount), &(&hit.material.diffuse * &lc))
-                .add(specular_strength * (1. - shadow_amount), &hit.material.specular)
-        }
-
-        if hit.material.reflectivity > 0. {
-            let refl_ray = Ray::new(
-                adjusted_hit,
-                v.clone().add(-2., &v.clone().off_axis(&hit.normal))
-            );
-            if let Some(refl_color) = self.raycast(refl_ray) {
-                color = color.add(hit.material.reflectivity, &refl_color);
-            }
-        }
-
-        color
-    }
-
-    fn get_scene(&self) -> UnionSDF {
+    fn get_scene(&self) -> Scene {
         let a = sdf::Sphere::new(1.)
             .translate(Vec3::new(0., 0., 5.))
             .shaded({
@@ -221,7 +117,7 @@ impl Viewport {
                 m
             });
         let c = sdf::Sphere::new(0.5)
-            .translate(Vec3::new(1., -2., 4.))
+            .translate(Vec3::new(1., -2., 4. - 2.))
             .shaded({
                 let mut m = Material::new();
                 m.diffuse = Color::from_hexstring("#8888ff");
@@ -248,33 +144,49 @@ impl Viewport {
                 m.ambient = m.diffuse.clone().scale(0.01);
                 m
             });
-        let scene = floor
+        let sdf = floor
             .union(Box::new(a))
             .union(Box::new(b))
             .union(Box::new(c))
             .union(Box::new(d));
-        scene
+
+        let lights = vec![
+            Light::new(
+                Vec3::new(-10.0, 10.0, 5.0),
+                Color::from_hexstring("#ffffff"),
+                10.,
+            ),
+            Light::new(
+                Vec3::new(10.0, 0.0, 0.0),
+                Color::from_hexstring("#ff88ff").scale(0.1),
+                10.,
+            ),
+            Light::new(
+                Vec3::new(-10.0, 0.0, 3.),
+                Color::from_hexstring("#ffffff"),
+                10.,
+            ),
+        ];
+
+        Scene {
+            sdf: Box::new(sdf),
+            lights,
+            view: ViewTransform::Persp(PerspView {
+                eye_frame: Frame::identity().translate(&(&Vec3::backward() * 5.)),
+                near: 1.,
+                fov_degrees: 60.,
+            }),
+            // view: ViewTransform::Ortho(OrthoView {
+            //     frame: Frame::new(
+            //         Vec3::new(0., 0., 1.),
+            //         Vec3::new(10., 0., 0.),
+            //         Vec3::new(0., 10., 0.),
+            //         Vec3::new(0., 0., 1.),
+            //     )
+            // }),
+            far_plane: 1_000.,
+        }
     }
-}
-
-fn perturb(ray: &Ray, degrees: f64) -> Ray {
-    let random_spread = degrees * PI / 180.0;
-    let mut ray = ray.clone();
-
-    let r = ray.direction.clone().normalize();
-    let axis1 = Vec3::cross(&r, &Vec3::right());
-    let axis1 = if axis1.norm2() == 0. {
-        Vec3::cross(&r, &Vec3::up())
-    } else {
-        axis1
-    };
-    let axis1 = axis1.normalize();
-    let axis2 = Vec3::cross(&axis1, &r).normalize();
-
-    ray.direction = r
-        .rotate((random() * 2. - 1.) * random_spread, &axis1)
-        .rotate((random() * 2. - 1.) * random_spread, &axis2);
-    ray
 }
 
 impl ViewportApi for Viewport {

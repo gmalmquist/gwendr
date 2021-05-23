@@ -1,9 +1,8 @@
-use std::ops;
-
-use wasm_bindgen::__rt::core::ops::Neg;
-
 use crate::linear::*;
 use crate::mat::Material;
+use wasm_bindgen::__rt::core::f64::consts::PI;
+
+const MAX_FLOAT: f64 = (1u64 << 53u64) as f64;
 
 pub trait SDF {
     fn distance(&self, point: &Vec3) -> f64;
@@ -60,6 +59,38 @@ pub trait SDF {
             mat,
         }
     }
+
+    fn raymarch(&self, ray: &Ray, far_plane: f64) -> Option<RayHit> {
+        let mut point = ray.origin.clone();
+        let direction = ray.direction.clone().normalize();
+        let mut distance = self.distance(&point);
+        let epsilon = self.epsilon();
+        while distance > epsilon {
+            point = point.add(distance, &direction);
+            distance = self.distance(&point);
+            if point.dist2(&ray.origin) >= far_plane*far_plane {
+                return None
+            }
+        }
+        let normal = self.normal(&point);
+        let material = self.material(&point);
+        let material = material.unwrap_or_else(|| Material::new());
+        Some(RayHit {
+            ray: ray.clone(),
+            point,
+            distance,
+            normal,
+            material,
+        })
+    }
+}
+
+pub struct RayHit {
+    pub ray: Ray,
+    pub point: Vec3,
+    pub distance: f64,
+    pub normal: Vec3,
+    pub material: Material,
 }
 
 pub struct SdfShape {
@@ -98,6 +129,14 @@ pub struct Disk {
     radius: f64,
 }
 
+#[derive(Clone)]
+pub struct PolyFace {
+    normal: Vec3,
+    centroid: Vec3,
+    vertices: Vec<Vec3>,
+    epsilon: f64,
+}
+
 impl Sphere {
     pub fn new(radius: f64) -> Self {
         Self { radius }
@@ -113,6 +152,34 @@ impl Disk {
         Self {
             normal,
             radius,
+        }
+    }
+}
+
+impl PolyFace {
+    pub fn new(vertices: Vec<Vec3>) -> Self {
+        let (centroid, normal) = if vertices.len() >= 3 {
+            let centroid = vertices.iter()
+                .fold(Vec3::zero(), |a, b| &a + b);
+            let a = &vertices[0] - &centroid;
+            let b = &vertices[1] - &centroid;
+            (centroid, &a ^ &b)
+        } else {
+            (Vec3::zero(), Vec3::zero())
+        };
+        let epsilon = {
+            let mut eps: f64 = 1.;
+            for i in 0..vertices.len() {
+                let d = vertices[i].dist(&vertices[(i + 1) % vertices.len()]);
+                eps = eps.min(d / 1000.);
+            }
+            eps
+        };
+        Self {
+            normal,
+            centroid,
+            vertices,
+            epsilon,
         }
     }
 }
@@ -145,6 +212,38 @@ impl SDF for Disk {
 
     fn epsilon(&self) -> f64 {
         self.radius / 1_000.0
+    }
+}
+
+impl SDF for PolyFace {
+    fn distance(&self, point: &Vec3) -> f64 {
+        if self.vertices.len() < 3 {
+            return MAX_FLOAT;
+        }
+        let mut sd = self.normal.dot(point);
+        for i in 0..self.vertices.len() {
+            let a = &self.vertices[i];
+            let b = &self.vertices[(i + 1) % self.vertices.len()];
+            let to_centroid = a.clone().lerp(0.5, b)
+                .add(-1., &self.centroid)
+                .scale(-1.);
+
+            // edge normal is orthogonal to both the edge and the face normal, and points away
+            // from the interior of the polygon.
+            let edge_normal = (b - a).rotate(PI / 2.0, &self.normal).normalize();
+            let edge_normal = if &edge_normal * &to_centroid <= 0. {
+                edge_normal
+            } else {
+                edge_normal.scale(-1.)
+            };
+
+            sd = sd.max(&(point - a) * &edge_normal)
+        }
+        sd
+    }
+
+    fn epsilon(&self) -> f64 {
+        self.epsilon
     }
 }
 

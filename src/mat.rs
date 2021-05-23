@@ -1,6 +1,5 @@
 use std::fmt;
 use std::ops;
-use wasm_bindgen::__rt::core::ops::Add;
 
 #[derive(Clone)]
 pub struct Material {

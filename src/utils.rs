@@ -1,6 +1,4 @@
 use chrono;
-use js_sys::Math::sqrt;
-use std::str::Chars;
 
 pub fn set_panic_hook() {
     // When the `console_error_panic_hook` feature is enabled, we can call the

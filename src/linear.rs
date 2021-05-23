@@ -104,6 +104,13 @@ impl Vec3 {
         self
     }
 
+    pub fn lerp(mut self, s: f64, to: &Vec3) -> Self {
+        self.x = (1. - s) * self.x + s * to.x;
+        self.y = (1. - s) * self.y + s * to.y;
+        self.z = (1. - s) * self.z + s * to.z;
+        self
+    }
+
     pub fn scale_vec(mut self, scale: &Vec3) -> Self {
         self.x *= scale.x;
         self.y *= scale.y;
@@ -208,8 +215,9 @@ impl Frame {
         Self::new(Vec3::zero(), Vec3::right(), Vec3::up(), Vec3::forward())
     }
 
-    pub fn translate(mut self, by: &Vec3) {
+    pub fn translate(mut self, by: &Vec3) -> Self {
         self.origin = self.origin.add(1.0, by);
+        self
     }
 
     pub fn scale(mut self, scale: f64) -> Self {
