@@ -86,6 +86,7 @@ impl Viewport {
         let local_point = canvas_frame.unproject_point(&canvas_point);
         let world_point = world_frame.project_point(&local_point);
 
+        // TODO: pretty sure this perspective math is slightly wrong
         let eye = Vec3::zero().add(eye_distance, &Vec3::backward());
         let eye_dir = (&world_point - &eye).normalize()
             .rotate(0. * PI / 180., &Vec3::up());
