@@ -1,7 +1,8 @@
-use crate::linear::*;
-
 use std::ops;
+
 use wasm_bindgen::__rt::core::ops::Neg;
+
+use crate::linear::*;
 use crate::mat::Material;
 
 pub trait SDF {
@@ -60,6 +61,26 @@ pub trait SDF {
 
     fn rotate<S: SDF>(sdf: S, angle: f64, axis: Vec3) -> RotatedSDF<S> {
         RotatedSDF { sdf, angle, axis }
+    }
+}
+
+pub struct SdfShape {
+    sdf: fn(&Vec3) -> f64,
+    epsilon: f64,
+    mat: Option<Material>,
+}
+
+impl SDF for SdfShape {
+    fn distance(&self, point: &Vec3) -> f64 {
+        (self.sdf)(point)
+    }
+
+    fn epsilon(&self) -> f64 {
+        self.epsilon
+    }
+
+    fn material(&self, point: &Vec3) -> Option<Material> {
+        self.mat.clone()
     }
 }
 
