@@ -90,6 +90,8 @@ impl Viewport {
         let x = x as f64;
         let y = y as f64;
 
+        let black = Color::black().to_string().into();
+
         if let Some(color) = scene.raycast_pixel(pixel, width, height) {
             let color = &color;
             self.context.set_fill_style(&color.into());
@@ -100,7 +102,8 @@ impl Viewport {
                 // log(&format!("hit: {:#?}", &hit.distance));
             }
         } else {
-            self.context.fill_rect(x, y, 0., 0.);
+            self.context.set_fill_style(&black);
+            self.context.fill_rect(x, y, 1., 1.);
         }
 
         self.index = (self.index + 1) % (width * height);
@@ -111,7 +114,7 @@ impl Viewport {
 
 
     fn get_scene(&self) -> Scene {
-        if true {
+        if false {
             let scene = "
 # four reflective spheres
 
