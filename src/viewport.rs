@@ -3,10 +3,10 @@ use wasm_bindgen::prelude::*;
 
 use crate::linear::{Frame, Ray, Vec3};
 use crate::mat;
-use crate::mat::{Color, Material};
+use crate::mat::{Color, Material, RefractionConstants};
 use crate::scene::{Light, OrthoView, PerspView, Scene, ViewTransform};
 use crate::sdf;
-use crate::sdf::SDF;
+use crate::sdf::{SDF, SmoothUnionType};
 use crate::utils::current_time_millis;
 
 #[wasm_bindgen]
@@ -199,6 +199,18 @@ write c5.png
                 m.phong = 10.;
                 m
             });
+        let e = sdf::Sphere::new(0.7)
+            .translate(Vec3::new(0.5, -1., 0.7))
+            .smooth_union(Box::new(sdf::Sphere::new(0.7)
+                .translate(Vec3::new(1.3, -1., 0.7))), Some(SmoothUnionType::Exp(32.)))
+            // .translate(Vec3::new(0.5, -1., 0.7))
+            .shaded({
+                let mut m = Material::new();
+                m.diffuse = Color::from_hexstring("#ffffff");
+                m.opacity = 0.5;
+                m.index_of_refraction = RefractionConstants::WATER;
+                m
+            });
         let floor = sdf::Disk::new(Vec3::up(), 30.0)
             .translate(Vec3::new(0., -10., 0.))
             .shaded({
@@ -211,7 +223,8 @@ write c5.png
             .union(Box::new(a))
             .union(Box::new(b))
             .union(Box::new(c))
-            .union(Box::new(d));
+            .union(Box::new(d))
+            .union(Box::new(e));
 
         let lights = vec![
             Light::new(

@@ -1,6 +1,17 @@
 use std::fmt;
 use std::ops;
 
+pub struct RefractionConstants;
+
+impl RefractionConstants {
+    pub const VACUUM: f64 = 1.0;
+    pub const AIR: f64 = 1.000277;
+    pub const WATER: f64 = 1.333333;
+    pub const ICE: f64 = 1.31;
+    pub const GLASS: f64 = 1.5;
+    pub const DIAMOND: f64 = 2.417;
+}
+
 #[derive(Clone, Debug)]
 pub struct Material {
     pub ambient: Color,
@@ -8,6 +19,8 @@ pub struct Material {
     pub specular: Color,
     pub phong: f64,
     pub reflectivity: f64,
+    pub opacity: f64,
+    pub index_of_refraction: f64,
 }
 
 impl Material {
@@ -18,6 +31,8 @@ impl Material {
             specular: Color::black(),
             phong: 1.,
             reflectivity: 0.,
+            opacity: 1.0,
+            index_of_refraction: RefractionConstants::VACUUM,
         }
     }
 }

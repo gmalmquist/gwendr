@@ -34,6 +34,10 @@ pub trait SDF {
         UnionSDF { a: Box::new(self), b: sdf }
     }
 
+    fn smooth_union(self, sdf: Box<dyn SDF>, s: Option<SmoothUnionType>) -> SmoothUnionSDF where Self: Sized + 'static {
+        SmoothUnionSDF::new(Box::new(self), sdf, s)
+    }
+
     fn intersection(self, sdf: Box<dyn SDF>) -> IntersectionSDF where Self: Sized + 'static {
         IntersectionSDF { a: Box::new(self), b: sdf }
     }
@@ -148,6 +152,12 @@ impl UnionSDF {
     }
 }
 
+impl SmoothUnionSDF {
+    pub fn new(a: Box<dyn SDF>, b: Box<dyn SDF>, k: Option<SmoothUnionType>) -> Self {
+        Self { a, b, smooth: k.unwrap_or(SmoothUnionType::Exp(32.)) }
+    }
+}
+
 impl IntersectionSDF {
     pub fn new(a: Box<dyn SDF>, b: Box<dyn SDF>) -> Self {
         Self { a, b }
@@ -162,6 +172,12 @@ impl DifferenceSDF {
 
 impl NegationSDF {
     pub fn new(sdf: Box<dyn SDF>) -> Self {
+        Self { sdf }
+    }
+}
+
+impl<'a> NegatedRefSDF<'a> {
+    pub fn new(sdf: &'a Box<dyn SDF>) -> Self {
         Self { sdf }
     }
 }
@@ -304,6 +320,21 @@ pub struct UnionSDF {
     b: Box<dyn SDF>,
 }
 
+pub struct SmoothUnionSDF {
+    a: Box<dyn SDF>,
+    b: Box<dyn SDF>,
+    smooth: SmoothUnionType,
+}
+
+pub enum SmoothUnionType {
+    /** exponential smoothing, default parameter = 32 */
+    Exp(f64),
+    /** polynomial smoothing, default parameter = 0.1 */
+    Poly(f64),
+    /** power smoothing, default parameter = 8 */
+    Pow(f64),
+}
+
 pub struct IntersectionSDF {
     a: Box<dyn SDF>,
     b: Box<dyn SDF>,
@@ -317,6 +348,10 @@ pub struct DifferenceSDF {
 
 pub struct NegationSDF {
     sdf: Box<dyn SDF>,
+}
+
+pub struct NegatedRefSDF<'a> {
+    sdf: &'a Box<dyn SDF>,
 }
 
 pub struct TranslatedSDF {
@@ -394,6 +429,38 @@ impl SDF for UnionSDF {
     }
 }
 
+impl SDF for SmoothUnionSDF {
+    fn distance(&self, point: &Vec3) -> f64 {
+        self.smooth.smooth(self.a.distance(point), self.b.distance(point))
+    }
+
+    fn epsilon(&self) -> f64 {
+        self.a.epsilon().min(self.b.epsilon())
+    }
+}
+
+impl SmoothUnionType {
+    pub fn smooth(&self, a: f64, b: f64) -> f64 {
+        // https://iquilezles.org/www/articles/smin/smin.htm
+        match self {
+            SmoothUnionType::Exp(k) => {
+                let res = (-k * a).exp2() + (-k * b).exp2();
+                -(res.log2() / k)
+            }
+            SmoothUnionType::Poly(k) => {
+                let k = 0.1;
+                let h = (k - (a - b).abs()).max(0.0) / k;
+                a.min(b) - h * h * k * (1.0 / 4.0)
+            }
+            SmoothUnionType::Pow(k) => {
+                let a = a.powf(*k);
+                let b = b.powf(*k);
+                ((a * b) / (a + b)).powf(1.0 / k)
+            }
+        }
+    }
+}
+
 impl SDF for IntersectionSDF {
     fn distance(&self, point: &Vec3) -> f64 {
         self.a.distance(point).max(self.b.distance(point))
@@ -453,6 +520,20 @@ impl SDF for NegationSDF {
 
     fn normal(&self, p: &Vec3) -> Vec3 {
         self.sdf.normal(p).scale(-1.)
+    }
+}
+
+impl<'a> SDF for NegatedRefSDF<'a> {
+    fn distance(&self, point: &Vec3) -> f64 {
+        -self.sdf.distance(point)
+    }
+
+    fn normal(&self, point: &Vec3) -> Vec3 {
+        self.sdf.normal(point).scale(-1.)
+    }
+
+    fn epsilon(&self) -> f64 {
+        self.sdf.epsilon()
     }
 }
 
