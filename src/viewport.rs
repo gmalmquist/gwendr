@@ -8,6 +8,7 @@ use crate::scene::{Light, OrthoView, PerspView, Scene, ViewTransform};
 use crate::sdf;
 use crate::sdf::{SDF, SmoothUnionType};
 use crate::utils::current_time_millis;
+use wasm_bindgen::__rt::core::f64::consts::PI;
 
 #[wasm_bindgen]
 extern "C" {
@@ -169,6 +170,9 @@ write c5.png
                 m
             });
         let b = sdf::Sphere::new(1.)
+            .transformed(Box::new(|point, sdf| {
+                sdf.distance(&(point + &Vec3::right().scale(0.1 * (point.y * PI * 5.).sin())))
+            }))
             .translate(Vec3::new(-3., 3., 7.))
             .shaded({
                 let mut m = Material::new();
@@ -207,12 +211,42 @@ write c5.png
             .shaded({
                 let mut m = Material::new();
                 m.diffuse = Color::from_hexstring("#ffffff");
-                m.opacity = 0.5;
+                m.specular = Color::from_hexstring("#ffffff");
+                m.phong = 30.;
+                m.opacity = 0.;
                 m.index_of_refraction = RefractionConstants::WATER;
+
+                m
+            });
+        let f = {
+            let s1 = sdf::Sphere::new(1.0);
+            let s2 = s1.clone();
+
+            let s1 = s1;
+            let s2 = s2.translate(Vec3::new(-0.6, -0.6, -1.0));
+
+            s1.difference(Box::new(s2))
+                .scale(0.5)
+                .translate(Vec3::new(-2.5, 0., 4.))
+        }.shaded({
+            let mut m = Material::new();
+            m.diffuse = Color::from_hexstring("#00ff00");
+            m.specular = Color::from_hexstring("#ffffff");
+            m.phong = 30.;
+            m.opacity = 1.0;
+            m.reflectivity = 0.2;
+            m
+        });
+        let background = sdf::Sphere::new(100.)
+            .negate()
+            .shaded({
+                let mut m = Material::new();
+                m.diffuse = Color::black();
+                m.ambient = Color::from_hexstring("#ddddff");
                 m
             });
         let floor = sdf::Disk::new(Vec3::up(), 30.0)
-            .translate(Vec3::new(0., -10., 0.))
+            .translate(Vec3::new(0., -5., 0.))
             .shaded({
                 let mut m = Material::new();
                 m.diffuse = Color::from_hexstring("#ffffff");
@@ -220,11 +254,13 @@ write c5.png
                 m
             });
         let sdf = floor
+            .union(Box::new(background))
             .union(Box::new(a))
             .union(Box::new(b))
             .union(Box::new(c))
             .union(Box::new(d))
-            .union(Box::new(e));
+            .union(Box::new(e))
+            .union(Box::new(f));
 
         let lights = vec![
             Light::new(

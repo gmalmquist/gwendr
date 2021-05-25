@@ -65,6 +65,11 @@ pub trait SDF {
         }
     }
 
+    fn transformed(self, func: Box<dyn Fn(&Vec3, &Box<dyn SDF>) -> f64>) -> TransformedSDF
+        where Self: Sized + 'static {
+        TransformedSDF::new(Box::new(self), func)
+    }
+
     fn raymarch(&self, ray: &Ray, far_plane: f64) -> Option<RayHit> {
         let mut point = ray.origin.clone();
         let direction = ray.direction.clone().normalize();
@@ -182,6 +187,12 @@ impl<'a> NegatedRefSDF<'a> {
     }
 }
 
+impl TransformedSDF {
+    pub fn new(sdf: Box<dyn SDF>, func: Box<dyn Fn(&Vec3, &Box<dyn SDF>) -> f64>) -> Self {
+        Self { sdf, func }
+    }
+}
+
 impl Sphere {
     pub fn new(radius: f64) -> Self {
         Self { radius }
@@ -236,7 +247,7 @@ impl SDF for Sphere {
     }
 
     fn epsilon(&self) -> f64 {
-        self.radius / 1_000.0
+        self.radius / 10_000.0
     }
 }
 
@@ -370,6 +381,11 @@ pub struct RotatedSDF {
     axis: Vec3,
 }
 
+pub struct TransformedSDF {
+    sdf: Box<dyn SDF>,
+    func: Box<dyn Fn(&Vec3, &Box<dyn SDF>) -> f64>,
+}
+
 impl SDF for MatSDF {
     fn distance(&self, point: &Vec3) -> f64 {
         self.sdf.distance(point)
@@ -419,14 +435,6 @@ impl SDF for UnionSDF {
             self.b.material(p)
         }
     }
-
-    fn normal(&self, p: &Vec3) -> Vec3 {
-        if self.a.distance(p) < self.b.distance(p) {
-            self.a.normal(p)
-        } else {
-            self.b.normal(p)
-        }
-    }
 }
 
 impl SDF for SmoothUnionSDF {
@@ -435,7 +443,7 @@ impl SDF for SmoothUnionSDF {
     }
 
     fn epsilon(&self) -> f64 {
-        self.a.epsilon().min(self.b.epsilon())
+        self.a.epsilon().min(self.b.epsilon()) / 10.
     }
 }
 
@@ -477,14 +485,6 @@ impl SDF for IntersectionSDF {
             self.b.material(p)
         }
     }
-
-    fn normal(&self, p: &Vec3) -> Vec3 {
-        if self.a.distance(p) < self.b.distance(p) {
-            self.a.normal(p)
-        } else {
-            self.b.normal(p)
-        }
-    }
 }
 
 impl SDF for DifferenceSDF {
@@ -498,14 +498,6 @@ impl SDF for DifferenceSDF {
 
     fn material(&self, p: &Vec3) -> Option<Material> {
         self.a.material(p)
-    }
-
-    fn normal(&self, p: &Vec3) -> Vec3 {
-        if self.a.distance(p) < self.b.distance(p) {
-            self.a.normal(p)
-        } else {
-            self.b.normal(p)
-        }
     }
 }
 
@@ -576,6 +568,16 @@ impl SDF for RotatedSDF {
 
     fn material(&self, p: &Vec3) -> Option<Material> {
         self.sdf.material(p)
+    }
+}
+
+impl SDF for TransformedSDF {
+    fn distance(&self, point: &Vec3) -> f64 {
+        (self.func)(point, &self.sdf)
+    }
+
+    fn epsilon(&self) -> f64 {
+        self.sdf.epsilon()
     }
 }
 
