@@ -9,15 +9,36 @@ pub trait SDF {
     fn distance(&self, point: &Vec3) -> f64;
 
     fn normal(&self, point: &Vec3) -> Vec3 {
-        let epsilon = self.epsilon();
-        Vec3::new(
-            self.distance(&Vec3::right().scale(epsilon).add(1.0, point))
-                - self.distance(&Vec3::left().scale(epsilon).add(1.0, point)),
-            self.distance(&Vec3::up().scale(epsilon).add(1.0, point))
-                - self.distance(&Vec3::down().scale(epsilon).add(1.0, point)),
-            self.distance(&Vec3::forward().scale(epsilon).add(1.0, point))
-                - self.distance(&Vec3::backward().scale(epsilon).add(1.0, point)),
-        ).normalize()
+        if point.is_nan() {
+            panic!("input point can't be nan!");
+        }
+        let mut epsilon = self.epsilon();
+        let threshold = 1. * PI / 180.;
+        let mut normal = None;
+        let mut refinements = 0;
+        for _ in 0..10 {
+            let curr = Vec3::new(
+                self.distance(&Vec3::right().scale(epsilon).add(1.0, point))
+                    - self.distance(&Vec3::left().scale(epsilon).add(1.0, point)),
+                self.distance(&Vec3::up().scale(epsilon).add(1.0, point))
+                    - self.distance(&Vec3::down().scale(epsilon).add(1.0, point)),
+                self.distance(&Vec3::forward().scale(epsilon).add(1.0, point))
+                    - self.distance(&Vec3::backward().scale(epsilon).add(1.0, point)),
+            ).normalize();
+            if curr.is_nan() {
+                panic!("NaN normal! oh no! point={}, eps={}", point, epsilon);
+            }
+            if let Some(prev) = &normal {
+                let delta = (&curr * prev).clamp(-1., 1.).acos().abs();
+                if delta <= threshold {
+                    return curr;
+                }
+                refinements += 1;
+            }
+            normal = Some(curr);
+            epsilon /= 10.;
+        }
+        normal.unwrap()
     }
 
     fn epsilon(&self) -> f64;
@@ -73,6 +94,9 @@ pub trait SDF {
     fn raymarch(&self, ray: &Ray, far_plane: f64) -> Option<RayHit> {
         let mut point = ray.origin.clone();
         let direction = ray.direction.clone().normalize();
+        if point.is_nan() || direction.is_nan() {
+            panic!("Cannot raymarch with nan point or direction: {:#?}", ray);
+        }
         let mut distance = self.distance(&point);
         let epsilon = self.epsilon();
         while distance > epsilon {
@@ -247,7 +271,7 @@ impl SDF for Sphere {
     }
 
     fn epsilon(&self) -> f64 {
-        self.radius / 10_000.0
+        self.radius / 1_000.0
     }
 }
 

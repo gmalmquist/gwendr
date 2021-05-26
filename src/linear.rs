@@ -70,6 +70,10 @@ impl Vec3 {
         )
     }
 
+    pub fn is_nan(&self) -> bool {
+        self.x.is_nan() || self.y.is_nan() || self.z.is_nan()
+    }
+
     pub fn on_axis(mut self, axis: &Vec3) -> Self {
         let s = self.dot(axis) / axis.norm2();
         self.x = axis.x * s;

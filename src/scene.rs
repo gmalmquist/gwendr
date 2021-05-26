@@ -110,6 +110,9 @@ impl Scene {
     }
 
     fn raycast(&self, ray: Ray, refl_count: usize) -> Option<Color> {
+        if ray.origin.is_nan() || ray.direction.is_nan() {
+            panic!("Cannot raycast with nan ray: {:#?}", ray);
+        }
         let ray_count = 1;
         let mut color = None;
         for _ in 0..ray_count {
@@ -122,6 +125,9 @@ impl Scene {
     }
 
     fn get_color(&self, hit: &RayHit, refl_count: usize) -> Color {
+        if hit.point.is_nan() {
+            panic!("Cannot get color for an NaN point! {:#?}", hit);
+        }
         let mut color = hit.material.ambient.clone().scale(hit.material.opacity);
 
         // ray pointing toward eye
@@ -203,6 +209,10 @@ impl Scene {
                 adjusted_hit,
                 v.clone().add(-2., &v.clone().off_axis(&hit.normal)),
             );
+            if refl_ray.origin.is_nan() || refl_ray.direction.is_nan() {
+                panic!("cannot cast NaN reflection ray: {:#?} v={}, normal={}", refl_ray,
+                       v, hit.normal);
+            }
             if let Some(refl_color) = self.raycast(refl_ray, refl_count - 1) {
                 color = color.add(hit.material.reflectivity * hit.material.opacity, &refl_color);
             }
@@ -242,6 +252,10 @@ impl Scene {
                     log(&format!("hit interior of shape with refraction ray, firing again: {}", refr_ray));
                 }
                 // TODO: apply coloration based on how far we went through the material?
+                if refr_ray.origin.is_nan() || refr_ray.direction.is_nan() {
+                    panic!("cannot cast NaN refraction ray: {:#?} farside hit: {:#?}", refr_ray,
+                           farside_hit);
+                }
                 if let Some(refr_color) = self.raycast(refr_ray, refl_count - 1) {
                     if self.debugging {
                         log(&format!("transparency color: {}", refr_color));
@@ -398,14 +412,23 @@ fn refract(incoming: &Vec3, normal: &Vec3, n1: f64, n2: f64) -> Vec3 {
         return incoming.clone();
     }
 
-    let theta1 = cos_theta1.acos().abs();
-    let theta2 = ((n1 * theta1.sin()) / n2).asin();
+    let theta1 = cos_theta1.clamp(-1., 1.).acos().abs();
+    let theta2 = ((n1 * theta1.sin()) / n2).clamp(-1., 1.).asin();
 
     let axis_of_rotation = (&incoming ^ normal).normalize();
 
-    normal.clone()
+    let result = normal.clone()
         .scale((&incoming * normal).signum())
-        .rotate(theta2, &axis_of_rotation)
+        .rotate(theta2, &axis_of_rotation);
+
+    if result.is_nan() {
+        panic!(
+            "refracted to NaN?! I={}, N={}, n1={}, n2={}, I^N={}, theta1={}, theta2={}",
+            incoming, normal, n1, n2, axis_of_rotation, theta1, theta2
+        );
+    }
+
+    result
 }
 
 fn perturb(ray: &Ray, degrees: f64) -> Ray {
