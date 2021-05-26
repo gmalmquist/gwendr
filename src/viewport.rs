@@ -191,6 +191,7 @@ write c5.png
                 m.ambient = m.diffuse.clone().scale(0.01);
                 m.specular = Color::from_hexstring("#ffffff");
                 m.phong = 10.;
+                m.opacity = 0.5;
                 m
             });
         let d = sdf::Sphere::new(0.2)

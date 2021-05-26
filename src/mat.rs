@@ -81,6 +81,21 @@ impl Color {
         Self::new(1., 1., 1.)
     }
 
+    pub fn is_black(&self) -> bool {
+        self.r.max(self.g).max(self.b) <= 0.0
+    }
+
+    pub fn is_white(&self) -> bool {
+        self.r.min(self.g).min(self.b) >= 1.0
+    }
+
+    pub fn lerp(mut self, s: f64, other: &Color) -> Self {
+        self.r = (1.0 - s) * self.r + s * other.r;
+        self.g = (1.0 - s) * self.g + s * other.g;
+        self.b = (1.0 - s) * self.b + s * other.b;
+        self
+    }
+
     pub fn add(mut self, scale: f64, other: &Color) -> Self {
         self.r += scale * other.r;
         self.g += scale * other.g;

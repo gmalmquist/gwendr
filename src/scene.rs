@@ -146,26 +146,46 @@ impl Scene {
                 log(&format!("shadow ray {}", shadow_ray));
             }
 
-            let shadow_ray_count = 1;
-            let mut shadow_hit_count = 0;
-            for _ in 0..shadow_ray_count {
+            let mut light_filter = Color::white();
+
+            for _ in 0..refl_count {
+                let shadow_dir = shadow_ray.direction.clone().normalize();
                 let hit = self.sdf.raymarch(
                     &perturb(&shadow_ray, 0.),
                     shadow_ray.direction.norm(),
                 );
-                if hit.is_some() {
-                    shadow_hit_count += 1;
+                if hit.is_none() {
+                    break;
                 }
+                let hit = hit.unwrap();
+                if &hit.normal * &shadow_ray.direction < 0. {
+                    if hit.material.opacity < 1.0 {
+                        light_filter = light_filter.lerp(hit.material.opacity, &hit.material.diffuse);
+                        shadow_ray = light.shadow_ray(&hit.point);
+                        shadow_ray.origin = shadow_ray.origin.add(self.sdf.epsilon() * 2., &shadow_dir);
+                        let inverse_sdf = NegatedRefSDF::new(&self.sdf);
+                        // NB: this doesn't take refraction into account. not sure if I actually can
+                        // do that with this lighting method; might have to do some kind of fancy
+                        // photon simulation thing.
+                        let refr_hit = inverse_sdf.raymarch(&shadow_ray, shadow_ray.direction.norm());
+                        if refr_hit.is_none() {
+                            break;
+                        }
+                        let refr_hit = refr_hit.unwrap();
+                        shadow_ray.origin = refr_hit.point.clone().add(self.sdf.epsilon() * 2., &shadow_dir);
+                    } else {
+                        light_filter = Color::black();
+                    }
+                    break;
+                }
+                shadow_ray.origin = hit.point.clone()
+                    .add(self.sdf.epsilon() * 2., &shadow_dir);
             }
 
-            if self.debugging {
-                log(&format!("shadow ray hits {}/{}", shadow_hit_count, shadow_ray_count));
-            }
-
-            if shadow_hit_count == shadow_ray_count {
+            if light_filter.is_black() {
                 continue; // fully in shadow.
             }
-            let shadow_amount = (shadow_hit_count as f64) / (shadow_ray_count as f64);
+            let lc = &light_filter * &lc;
 
             // reflection of direction to light
             let lr = ld.clone().add(-2., &ld.clone().off_axis(&hit.normal));
@@ -173,9 +193,9 @@ impl Scene {
             let diffuse_strength = (&ld * &hit.normal).max(0.);
             let specular_strength = (&lr * &v).max(0.).powf(hit.material.phong);
             color = color
-                .add(diffuse_strength * (1. - shadow_amount) * hit.material.opacity, &(&hit.material.diffuse * &lc))
+                .add(diffuse_strength * hit.material.opacity, &(&hit.material.diffuse * &lc))
                 // nb: intentionally not scaling specular highlights by opacity.
-                .add(specular_strength * (1. - shadow_amount), &hit.material.specular)
+                .add(specular_strength, &hit.material.specular)
         }
 
         if hit.material.reflectivity > 0. && refl_count > 0 {
